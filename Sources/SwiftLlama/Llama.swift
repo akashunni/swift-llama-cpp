@@ -25,13 +25,22 @@ final actor Llama {
         llama_backend_init()
         var model_params = llama_model_default_params()
 
+        // useGPU = false: keep GPU disabled (legacy flag, overrides gpuLayerCount)
         if !config.useGPU {
             model_params.n_gpu_layers = 0
+        } else {
+            // n_gpu_layers controls how many transformer layers are offloaded to
+            // the GPU (Metal on Apple Silicon / iOS device).
+            //   0   = CPU only
+            //   999 = attempt to offload all layers
+            // Casting to Int32 is safe: llama.cpp uses int32_t for this field.
+            model_params.n_gpu_layers = Int32(config.gpuLayerCount)
         }
 
         #if targetEnvironment(simulator)
-                model_params.n_gpu_layers = 0
-                print("Running on simulator, force use n_gpu_layers = 0")
+        // Metal is not available in the iOS simulator; force CPU-only.
+        model_params.n_gpu_layers = 0
+        print("Running on simulator, force use n_gpu_layers = 0")
         #endif
 
         let model = LlamaModel(path: modelPath, parameters: model_params)
@@ -44,9 +53,11 @@ final actor Llama {
         print("Using \(n_threads) threads")
 
         var contextParam = llama_context_default_params()
-        contextParam.n_ctx = config.maxTokenCount
-        contextParam.n_threads       = 1 // UInt32(n_threads) its actually faster if less threads are doing work
-        contextParam.n_threads_batch = 1 // UInt32(n_threads)
+        // n_ctx: the context window size (tokens). Sourced from config.contextSize.
+        contextParam.n_ctx = UInt32(config.contextSize)
+        // n_threads / n_threads_batch: CPU thread count for inference and batch processing.
+        contextParam.n_threads       = Int32(config.threadCount)
+        contextParam.n_threads_batch = Int32(config.threadCount)
         contextParam.n_batch = config.batchSize
         contextParam.n_ubatch = config.batchSize
         contextParam.offload_kqv = true
