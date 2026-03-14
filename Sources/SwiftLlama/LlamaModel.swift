@@ -77,6 +77,9 @@ public final class LlamaModel {
 
     /// Render token text for a token id.
     public func string(from token: llama_token) -> String {
+        guard token >= 0 && token < vocabularySize() else {
+            return ""
+        }
         guard let results = llama_vocab_get_text(vocabPointer, token) else {
             return ""
         }
@@ -85,6 +88,9 @@ public final class LlamaModel {
 
     /// Convert a token id to its piece (optionally rendering special tokens).
     public func piece(from token: llama_token, renderSpecial: Bool = false, lstrip: Int32 = 0) -> String {
+        guard token >= 0 && token < vocabularySize() else {
+            return ""
+        }
         var bufferSize: Int32 = 64
         var buffer = [CChar](repeating: 0, count: Int(bufferSize))
         var charCount = llama_token_to_piece(vocabPointer, token, &buffer, bufferSize, lstrip, renderSpecial)

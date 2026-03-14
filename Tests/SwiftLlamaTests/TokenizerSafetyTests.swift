@@ -40,16 +40,25 @@ struct TokenizerSafetyTests {
     @Test("piece(from:) with various tokens")
     func testPieceSafety() throws {
         let model = try #require(LlamaModel(path: URL.llama1B.path))
+        print("Vocabulary size: \(model.vocabularySize())")
         
         // Test common token
-        let piece1 = model.piece(from: model.bosToken())
+        let piece1 = model.piece(from: model.bosToken(), renderSpecial: true)
         #expect(piece1.count >= 0)
         
-        let piece2 = model.piece(from: 100)
-        #expect(!piece2.isEmpty)
+        // Test a token that should have a piece
+        let helloTokens = model.tokenize(text: "Hello", addBos: false, special: false)
+        if let firstToken = helloTokens.first {
+            let pieceHello = model.piece(from: firstToken)
+            #expect(!pieceHello.isEmpty)
+        }
         
-        // Test invalid token
+        // Test invalid token - should not crash
         let pieceInvalid = model.piece(from: -1)
         #expect(pieceInvalid == "")
+        
+        // Test very large token ID - should not crash
+        let pieceLarge = model.piece(from: 999_999)
+        #expect(pieceLarge == "")
     }
 }
