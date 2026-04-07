@@ -244,8 +244,6 @@ public final class LlamaContext {
 
     /// Applies a control vector to the context.
     ///
-    /// This can be used to apply adjustments to the model's behavior.
-    ///
     /// - Parameters:
     ///   - data: A buffer of floats representing the control vector data. Should be `n_embd * n_layers`.
     ///   - n_embd: The size of a single layer's control vector.
@@ -271,7 +269,7 @@ public final class LlamaContext {
     /// Clears the currently applied control vector.
     /// - Throws: `LlamaContextError.loraAdapterFailed` if clearing fails.
     public func clearControlVector() throws {
-        let result = llama_set_adapter_cvec(contextPointer, nil, 0, 0, 0, 0)
+        let result = llama_set_adapter_cvec(contextPointer, nil as UnsafePointer<Float>?, 0, 0, 0, 0)
         if result != 0 {
             throw LlamaContextError.loraAdapterFailed("Failed to clear control vector.")
         }
