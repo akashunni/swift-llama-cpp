@@ -77,9 +77,6 @@ public final class LlamaModel {
 
     /// Render token text for a token id.
     public func string(from token: llama_token) -> String {
-        guard token >= 0 && token < vocabularySize() else {
-            return ""
-        }
         guard let results = llama_vocab_get_text(vocabPointer, token) else {
             return ""
         }
@@ -88,21 +85,9 @@ public final class LlamaModel {
 
     /// Convert a token id to its piece (optionally rendering special tokens).
     public func piece(from token: llama_token, renderSpecial: Bool = false, lstrip: Int32 = 0) -> String {
-        guard token >= 0 && token < vocabularySize() else {
-            return ""
-        }
-        var bufferSize: Int32 = 64
+        let bufferSize: Int32 = 64
         var buffer = [CChar](repeating: 0, count: Int(bufferSize))
-        var charCount = llama_token_to_piece(vocabPointer, token, &buffer, bufferSize, lstrip, renderSpecial)
-        if charCount < 0 {
-            // Buffer too small, resize and retry
-            bufferSize = -charCount
-            buffer = [CChar](repeating: 0, count: Int(bufferSize))
-            charCount = llama_token_to_piece(vocabPointer, token, &buffer, bufferSize, lstrip, renderSpecial)
-        }
-        guard charCount > 0 else {
-            return ""
-        }
+        let charCount = llama_token_to_piece(vocabPointer, token, &buffer, bufferSize, lstrip, renderSpecial)
         let chars = Array(buffer.prefix(upTo: Int(charCount))) + [0]
         return String(cString: chars, encoding: .utf8) ?? ""
     }
@@ -139,32 +124,12 @@ public final class LlamaModel {
         guard !text.isEmpty else {
             return []
         }
-        let utf8Count = Int32(text.utf8.count)
+        let utf8Count = text.utf8.count
         let maxTokens = trainedContextSize()
-        // Heuristic: token buffer = utf8Count + 2 (BOS/EOS and potential extra)
-        var tokenBufferSize = utf8Count + (addBos ? 1 : 0) + 1
+        let tokenBufferSize = utf8Count + (addBos ? 1 : 0) + 1
         var tokensBuffer = [llama_token](repeating: llama_token(), count: Int(tokenBufferSize))
-        var tokenCount = llama_tokenize(vocabPointer, text, utf8Count, &tokensBuffer, tokenBufferSize, addBos, special)
-        
-        if tokenCount < 0 {
-            // Buffer too small, resize and retry
-            tokenBufferSize = -tokenCount
-            tokensBuffer = [llama_token](repeating: llama_token(), count: Int(tokenBufferSize))
-            tokenCount = llama_tokenize(vocabPointer, text, utf8Count, &tokensBuffer, tokenBufferSize, addBos, special)
-        }
-        
-        guard tokenCount > 0 else {
-            return []
-        }
-        
-        // Final sanity check: ensure we don't return more than what the context can handle if that was intent
-        // though llama_tokenize already respects context size if passed as n_tokens_max
-        // but currently we pass tokenBufferSize as n_tokens_max to get the full tokenization first.
-        let result = Array(tokensBuffer.prefix(upTo: Int(tokenCount)))
-        if result.count > maxTokens {
-            return Array(result.prefix(Int(maxTokens)))
-        }
-        return result
+        let tokenCount = llama_tokenize(vocabPointer, text, Int32(utf8Count), &tokensBuffer, maxTokens, addBos, special)
+        return Array(tokensBuffer.prefix(upTo: Int(tokenCount)))
     }
 
     /// Convert tokens back to text (inverse of tokenize)
