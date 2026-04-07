@@ -1,24 +1,10 @@
-import Foundation
 import llama
 
 public enum LlamaBackend {
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var isInitialized = false
-
-    /// Initialize the llama + ggml backend. Safe to call multiple times.
-    public static func initialize() {
-        lock.lock()
-        defer { lock.unlock() }
-        if !isInitialized {
-            llama_backend_init()
-            isInitialized = true
-        }
-    }
-    
-    // shutdown() is removed because llama_backend_free() is global and 
-    // destructive to all active contexts/models. In a long-lived process 
-    // like a test runner, it's safer to let the OS clean up at exit.
-
+    /// Initialize the llama + ggml backend. Call once at program start.
+    public static func initialize() { llama_backend_init() }
+    /// Free the backend. Call once at program end.
+    public static func shutdown() { llama_backend_free() }
     /// Whether mmap/mlock/gpu offload/rpc are supported by the compiled library.
     public static var supportsMmap: Bool { llama_supports_mmap() }
     public static var supportsMlock: Bool { llama_supports_mlock() }

@@ -38,7 +38,7 @@ public struct LlamaConfig: Equatable, Sendable {
         batchSize: UInt32,
         maxTokenCount: UInt32,
         useGPU: Bool = true,
-        gpuLayerCount: Int = 999,                                        // default 999 → offload all layers to GPU
+        gpuLayerCount: Int = 0,                                          // default 0 → CPU only
         threadCount: Int = ProcessInfo.processInfo.processorCount,        // use all logical CPUs
         contextSize: Int = 2048                                           // classic llama.cpp default
     ) {

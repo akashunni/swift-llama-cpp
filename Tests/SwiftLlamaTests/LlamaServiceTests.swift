@@ -355,7 +355,7 @@ struct LlamaServiceTests {
         // Given: small token budget to keep the test bounded
         let service = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: 80)
+            config: .init(batchSize: 256, maxTokenCount: 80, useGPU: false)
         )
         let messages = [
             LlamaChatMessage(role: .system, content: "You are a helpful assistant."),
@@ -376,11 +376,11 @@ struct LlamaServiceTests {
         let cfg = LlamaSamplingConfig(temperature: 0.1, seed: TestConfig.testSeed)
         let serviceA = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: 80)
+            config: .init(batchSize: 256, maxTokenCount: 80, useGPU: false)
         )
         let serviceB = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: 80)
+            config: .init(batchSize: 256, maxTokenCount: 80, useGPU: false)
         )
         let messages = createSimpleMessages()
 
@@ -400,7 +400,7 @@ struct LlamaServiceTests {
         let samplingConfig = try createJSONStringArraySamplingConfig()
         let service = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: 120)
+            config: .init(batchSize: 256, maxTokenCount: 120, useGPU: false)
         )
         let messages = [
             LlamaChatMessage(role: .system, content: "You are a helpful assistant that responds only in a JSON array of strings."),
@@ -421,11 +421,11 @@ struct LlamaServiceTests {
         let samplingConfig = try createJSONStringArraySamplingConfig()
         let serviceA = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: 120)
+            config: .init(batchSize: 256, maxTokenCount: 120, useGPU: false)
         )
         let serviceB = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: 120)
+            config: .init(batchSize: 256, maxTokenCount: 120, useGPU: false)
         )
         let messages = [
             LlamaChatMessage(role: .system, content: "You are a helpful assistant that responds only in a JSON array of strings."),
@@ -455,7 +455,7 @@ struct LlamaServiceTests {
         )
         let service = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: 120)
+            config: .init(batchSize: 256, maxTokenCount: 120, useGPU: false)
         )
         let messages = [
             LlamaChatMessage(role: .system, content: "You are a helpful assistant that responds only in a JSON array of strings."),
@@ -884,7 +884,7 @@ extension LlamaServiceTests {
         let hardLimit = 40
         let service = LlamaService(
             modelUrl: .llama1B,
-            config: .init(batchSize: 256, maxTokenCount: UInt32(hardLimit))
+            config: .init(batchSize: 256, maxTokenCount: UInt32(hardLimit), useGPU: false)
         )
         let messages = [
             LlamaChatMessage(role: .system, content: "You are a helpful assistant."),

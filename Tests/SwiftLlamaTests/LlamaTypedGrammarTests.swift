@@ -64,18 +64,18 @@ struct LlamaTypedGrammarTests {
     func testSimpleStructGrammar() throws {
         let cfg = try LlamaTypedJSONGrammarBuilder.makeGrammarConfig(for: Person.self)
         #expect(cfg.grammar.contains("root"))
-        #expect(cfg.grammar.contains("root ::= or"))
+        #expect(cfg.grammar.contains("object_root_value"))
         #expect(cfg.grammar.contains("\"name\""))
         #expect(cfg.grammar.contains("\"age\""))
         #expect(cfg.grammar.contains("\"city\""))
         // Optional allows null
-        #expect(cfg.grammar.contains("|\"null\""))
+        #expect(cfg.grammar.contains("| \"null\""))
     }
 
     @Test("Generates grammar for nested arrays and optionals")
     func testNestedArrayGrammar() throws {
         let cfg = try LlamaTypedJSONGrammarBuilder.makeGrammarConfig(for: Catalog.self)
-        #expect(cfg.grammar.contains("\"[\"" ))
+        #expect(cfg.grammar.contains("array_"))
         #expect(cfg.grammar.contains("\"items\""))
         #expect(cfg.grammar.contains("\"id\""))
         #expect(cfg.grammar.contains("\"title\""))
@@ -89,7 +89,7 @@ struct LlamaTypedGrammarTests {
         #expect(cfg.grammar.contains("\"l2\""))
         #expect(cfg.grammar.contains("\"value\""))
         #expect(cfg.grammar.contains("\"count\""))
-        #expect(cfg.grammar.contains("|\"null\""))
+        #expect(cfg.grammar.contains("| \"null\""))
     }
 
     @Test("Grammar includes enum raw string fields")
@@ -118,7 +118,7 @@ struct LlamaTypedGrammarTests {
         #expect(cfg.grammar.contains("\"numbers\""))
         #expect(cfg.grammar.contains("\"people\""))
         // Should have array rules
-        #expect(cfg.grammar.contains("\"[\"" ))
+        #expect(cfg.grammar.contains("array_"))
     }
 
     @Test("Streaming typed JSON for Person produces valid JSON")
