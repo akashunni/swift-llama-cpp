@@ -223,24 +223,41 @@ final actor Llama {
     }
 
     private func processPrompt(tokens: [llama_token], startIndex: Int) throws {
-        guard !tokens.isEmpty else { return }
+        guard !tokens.isEmpty else {
+            // No new tokens to process, but the sampler needs valid logits.
+            // Re-decode the last cached token with logits enabled.
+            guard !processedTokens.isEmpty else { return }
+            let lastPos = Int32(processedTokens.count - 1)
+            let lastToken = processedTokens[processedTokens.count - 1]
+            batch.reset()
+            batch.addToken(lastToken, at: lastPos, logits: true)
+            try processBatch()
+            return
+        }
         batch.reset()
 
         for i in 0..<tokens.count {
             let tokenPosition = startIndex + i
             let tokenId = tokens[i]
-            batch.addToken(tokenId, at: Int32(tokenPosition), logits: false)
+            // Request logits only for the very last token in the full sequence
+            let isLast = (i == tokens.count - 1)
+            batch.addToken(tokenId, at: Int32(tokenPosition), logits: isLast)
             processedTokens.append(tokenId)
             if batch.size == config.batchSize {
+                // If the last token happens to land exactly at the batch boundary,
+                // we already marked it with logits=true above.
                 try processBatch()
-                batch.reset()
+                if !isLast {
+                    batch.reset()
+                }
             }
         }
 
-        batch.setLastTokenLogits(true)
-        try processBatch()
+        // Decode any remaining tokens in the batch that weren't flushed in the loop
+        if batch.size > 0 {
+            try processBatch()
+        }
 
         currentTokenPosition = Int32(processedTokens.count)
-
     }
 }
