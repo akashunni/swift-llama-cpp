@@ -401,20 +401,17 @@ struct RecordingSingleValueContainer: SingleValueDecodingContainer {
     }
 }
 
-// MARK: - Grammar Generation
-
 final class GrammarGenerator {
     struct RuleRef: Hashable { let id: ObjectIdentifier }
 
     func generateGrammar(for root: SchemaNode) -> String {
         var rules: [String] = []
         var nameMap: [ObjectIdentifier: String] = [:]
-        let rootName = emitRule(for: root, preferredName: "root_value", rules: &rules, names: &nameMap)
+        let rootName = emitRule(for: root, preferredName: "r", rules: &rules, names: &nameMap)
+        let rootLine = "root ::= \(rootName)"
         let prelude = baseRules()
         let body = rules.joined(separator: "\n")
-        let rootLine = "root ::= \(rootName)\n"
-        // Place the root rule first, as expected by llama.cpp grammar parser
-        return prelude + "\n" + rootLine + body + "\n"
+        return [rootLine, prelude, body].joined(separator: "\n") + "\n"
     }
 
     private func emitRule(for node: SchemaNode, preferredName: String, rules: inout [String], names: inout [ObjectIdentifier: String]) -> String {
@@ -423,54 +420,54 @@ final class GrammarGenerator {
         let name: String
         switch node.kind {
         case .string:
-            name = preferredName
+            name = "s" + preferredName
             names[key] = name
             rules.append("\(name) ::= string")
         case .integer:
-            name = preferredName
+            name = "i" + preferredName
             names[key] = name
             rules.append("\(name) ::= int")
         case .number:
-            name = preferredName
+            name = "n" + preferredName
             names[key] = name
             rules.append("\(name) ::= number")
         case .boolean:
-            name = preferredName
+            name = "b" + preferredName
             names[key] = name
             rules.append("\(name) ::= \"true\" | \"false\"")
         case .null:
-            name = preferredName
+            name = "nu" + preferredName
             names[key] = name
             rules.append("\(name) ::= \"null\"")
         case .array(let element):
-            name = preferredName.hasPrefix("array_") ? preferredName : "array_\(preferredName)"
+            name = preferredName.hasPrefix("a") ? preferredName : "a\(preferredName)"
             names[key] = name
-            let child = emitRule(for: element, preferredName: "elem_\(name)", rules: &rules, names: &names)
-            rules.append(#"\#(name) ::= "[" ws ( \#(child) ( ws "," ws \#(child) )* )? ws "]""#)
+            let child = emitRule(for: element, preferredName: "e\(name)", rules: &rules, names: &names)
+            rules.append("\(name) ::= \"[\" ws (\(child) (ws \",\" ws \(child))*)? ws \"]\"")
         case .object(let required, let optional):
-            name = preferredName.hasPrefix("object_") ? preferredName : "object_\(preferredName)"
+            name = preferredName.hasPrefix("o") ? preferredName : "o\(preferredName)"
             names[key] = name
             // Build pair alternatives
             var pairRules: [String] = []
             for (k, v) in required {
-                let child = emitRule(for: v, preferredName: "val_\(sanitize(k))_\(name)", rules: &rules, names: &names)
-                let pairName = "pair_\(sanitize(k))_\(name)"
-                rules.append(#"\#(pairName) ::= "\#(escapeJSONStringLiteral(k))" ws ":" ws \#(child)"#)
+                let child = emitRule(for: v, preferredName: "\(name)r", rules: &rules, names: &names)
+                let pairName = "p\(name.dropFirst())\(sanitize(k))"
+                rules.append("\(pairName) ::= \"\(escapeJSONStringLiteral(k))\" ws \":\" ws \(child)")
                 pairRules.append(pairName)
             }
             for (k, v) in optional {
-                let child = emitRule(for: v, preferredName: "val_\(sanitize(k))_\(name)", rules: &rules, names: &names)
-                let pairName = "pair_\(sanitize(k))_\(name)"
-                rules.append(#"\#(pairName) ::= "\#(escapeJSONStringLiteral(k))" ws ":" ws ( \#(child) | "null" )"#)
+                let child = emitRule(for: v, preferredName: "\(name)o", rules: &rules, names: &names)
+                let pairName = "p\(name.dropFirst())\(sanitize(k))o"
+                rules.append("\(pairName) ::= \"\(escapeJSONStringLiteral(k))\" ws \":\" ws (\(child)|\"null\")")
                 pairRules.append(pairName)
             }
             if pairRules.isEmpty {
-                rules.append(#"\#(name) ::= "{" ws "}""#)
+                rules.append("\(name) ::= \"{\" ws \"}\"")
             } else {
-                let memberName = "member_\(name)"
-                let memberAlt = pairRules.joined(separator: " | ")
+                let memberName = "m\(name.dropFirst())"
+                let memberAlt = pairRules.joined(separator: "|")
                 rules.append("\(memberName) ::= \(memberAlt)")
-                rules.append(#"\#(name) ::= "{" ws ( \#(memberName) ( ws "," ws \#(memberName) )* )? ws "}""#)
+                rules.append("\(name) ::= \"{\" ws (\(memberName) (ws \",\" ws \(memberName))*)? ws \"}\"")
             }
         }
         return name
@@ -478,14 +475,11 @@ final class GrammarGenerator {
 
     private func baseRules() -> String {
         return #"""
-        ws     ::= ([ \t\n] ws)?
-        string ::= "\"" (
-          [^"\\u0000-\u001f] |
-          "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4})
-        )* "\""
-        int    ::= ("-")? ("0" | [1-9] [0-9]*)
-        number ::= ("-")? ( ("0" | [1-9] [0-9]*) ("." [0-9]+)? ) ([eE] [-+]? [0-9]+)?
-        """#
+ws ::= [ \t\n]*
+string ::= "\"" ([^"\\\x00-\x1F] | "\\" (["\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\""
+int ::= "-"? [0-9]+
+number ::= "-"? [0-9]+ ("." [0-9]+)? ([eE] [+-]? [0-9]+)?
+"""#
     }
 
     private func escapeJSONStringLiteral(_ s: String) -> String {

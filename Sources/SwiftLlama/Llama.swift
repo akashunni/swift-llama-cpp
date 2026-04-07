@@ -22,7 +22,7 @@ final actor Llama {
 
     init(modelPath: String, config: LlamaConfig) throws {
         self.config = config
-        llama_backend_init()
+        LlamaBackend.initialize()
         var model_params = llama_model_default_params()
 
         // useGPU = false: keep GPU disabled (legacy flag, overrides gpuLayerCount)
@@ -76,7 +76,8 @@ final actor Llama {
     }
 
     deinit {
-        llama_backend_free()
+        // llama_backend_free() is not called here because it's global and 
+        // destructive. LlamaBackend manages the global state.
     }
 
     // Expose some backend/system utilities for convenience

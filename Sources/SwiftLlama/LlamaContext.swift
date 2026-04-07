@@ -19,12 +19,18 @@ public enum LlamaContextError: Error {
 public final class LlamaContext {
     // MARK: - Properties
 
+    private struct AppliedLoraAdapter {
+        let adapterPointer: OpaquePointer
+        var scale: Float
+    }
+
     public let model: LlamaModel
     var memory: LlamaMemory {
         LlamaMemory(memory: llama_get_memory(contextPointer))
     }
     let contextPointer: OpaquePointer
     private var abortBox: Unmanaged<AbortBox>?
+    private var appliedLoraAdapters: [AppliedLoraAdapter] = []
 
     // MARK: - Lifecycle
 
@@ -171,25 +177,69 @@ public final class LlamaContext {
 
     // MARK: - Adapters
 
-    /// Applies a single LoRA adapter to the context.
+    private func setLoraAdapters(_ adapters: [AppliedLoraAdapter]) -> Int32 {
+        guard !adapters.isEmpty else {
+            return llama_set_adapters_lora(contextPointer, nil, 0, nil)
+        }
+
+        var adapterPointers: [OpaquePointer?] = adapters.map(\.adapterPointer)
+        var scales = adapters.map(\.scale)
+
+        return adapterPointers.withUnsafeMutableBufferPointer { adapterBuffer in
+            scales.withUnsafeMutableBufferPointer { scaleBuffer in
+                llama_set_adapters_lora(
+                    contextPointer,
+                    adapterBuffer.baseAddress,
+                    size_t(adapterBuffer.count),
+                    scaleBuffer.baseAddress
+                )
+            }
+        }
+    }
+
+    /// Applies a LoRA adapter to the context.
     /// - Parameters:
     ///   - adapter: The `LlamaLoraAdapter` to apply.
     ///   - scale: The scaling factor for the adapter's influence.
     /// - Throws: `LlamaContextError.loraAdapterFailed` if the operation fails.
     public func apply(loraAdapter: LlamaLoraAdapter, scale: Float = 1.0) throws {
-        var adapterPtr: OpaquePointer? = loraAdapter.adapterPointer
-        var scaleValue = scale
-        let result = withUnsafeMutablePointer(to: &adapterPtr) { ptr in
-            llama_set_adapters_lora(contextPointer, ptr, 1, &scaleValue)
+        var nextAdapters = appliedLoraAdapters
+        if let index = nextAdapters.firstIndex(where: { $0.adapterPointer == loraAdapter.adapterPointer }) {
+            nextAdapters[index].scale = scale
+        } else {
+            nextAdapters.append(.init(adapterPointer: loraAdapter.adapterPointer, scale: scale))
         }
+
+        let result = setLoraAdapters(nextAdapters)
         if result != 0 {
             throw LlamaContextError.loraAdapterFailed("Failed to apply LoRA adapter.")
         }
+        appliedLoraAdapters = nextAdapters
+    }
+
+    /// Removes a specific LoRA adapter from the context.
+    /// - Parameter adapter: The `LlamaLoraAdapter` to remove.
+    /// - Throws: `LlamaContextError.loraAdapterFailed` if the adapter is not found or cannot be removed.
+    public func remove(loraAdapter: LlamaLoraAdapter) throws {
+        guard let index = appliedLoraAdapters.firstIndex(where: { $0.adapterPointer == loraAdapter.adapterPointer }) else {
+            throw LlamaContextError.loraAdapterFailed("LoRA adapter not found in context.")
+        }
+
+        var nextAdapters = appliedLoraAdapters
+        nextAdapters.remove(at: index)
+
+        let result = setLoraAdapters(nextAdapters)
+        if result != 0 {
+            throw LlamaContextError.loraAdapterFailed("Failed to remove LoRA adapter.")
+        }
+        appliedLoraAdapters = nextAdapters
     }
 
     /// Removes all LoRA adapters from the context.
     public func removeAllLoraAdapters() {
-        llama_set_adapters_lora(contextPointer, nil, 0, nil)
+        if setLoraAdapters([]) == 0 {
+            appliedLoraAdapters.removeAll(keepingCapacity: true)
+        }
     }
 
     /// Applies a control vector to the context.
