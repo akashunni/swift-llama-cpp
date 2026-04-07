@@ -19,12 +19,18 @@ public enum LlamaContextError: Error {
 public final class LlamaContext {
     // MARK: - Properties
 
+    private struct AppliedLoraAdapter {
+        let adapterPointer: OpaquePointer
+        var scale: Float
+    }
+
     public let model: LlamaModel
     var memory: LlamaMemory {
         LlamaMemory(memory: llama_get_memory(contextPointer))
     }
     let contextPointer: OpaquePointer
     private var abortBox: Unmanaged<AbortBox>?
+    private var appliedLoraAdapters: [AppliedLoraAdapter] = []
 
     // MARK: - Lifecycle
 
@@ -171,31 +177,69 @@ public final class LlamaContext {
 
     // MARK: - Adapters
 
+    private func setLoraAdapters(_ adapters: [AppliedLoraAdapter]) -> Int32 {
+        guard !adapters.isEmpty else {
+            return llama_set_adapters_lora(contextPointer, nil, 0, nil)
+        }
+
+        var adapterPointers: [OpaquePointer?] = adapters.map(\.adapterPointer)
+        var scales = adapters.map(\.scale)
+
+        return adapterPointers.withUnsafeMutableBufferPointer { adapterBuffer in
+            scales.withUnsafeMutableBufferPointer { scaleBuffer in
+                llama_set_adapters_lora(
+                    contextPointer,
+                    adapterBuffer.baseAddress,
+                    size_t(adapterBuffer.count),
+                    scaleBuffer.baseAddress
+                )
+            }
+        }
+    }
+
     /// Applies a LoRA adapter to the context.
     /// - Parameters:
     ///   - adapter: The `LlamaLoraAdapter` to apply.
     ///   - scale: The scaling factor for the adapter's influence.
     /// - Throws: `LlamaContextError.loraAdapterFailed` if the operation fails.
     public func apply(loraAdapter: LlamaLoraAdapter, scale: Float = 1.0) throws {
-        let result = llama_set_adapter_lora(contextPointer, loraAdapter.adapterPointer, scale)
+        var nextAdapters = appliedLoraAdapters
+        if let index = nextAdapters.firstIndex(where: { $0.adapterPointer == loraAdapter.adapterPointer }) {
+            nextAdapters[index].scale = scale
+        } else {
+            nextAdapters.append(.init(adapterPointer: loraAdapter.adapterPointer, scale: scale))
+        }
+
+        let result = setLoraAdapters(nextAdapters)
         if result != 0 {
             throw LlamaContextError.loraAdapterFailed("Failed to apply LoRA adapter.")
         }
+        appliedLoraAdapters = nextAdapters
     }
 
     /// Removes a specific LoRA adapter from the context.
     /// - Parameter adapter: The `LlamaLoraAdapter` to remove.
     /// - Throws: `LlamaContextError.loraAdapterFailed` if the adapter is not found or cannot be removed.
     public func remove(loraAdapter: LlamaLoraAdapter) throws {
-        let result = llama_rm_adapter_lora(contextPointer, loraAdapter.adapterPointer)
-        if result == -1 {
+        guard let index = appliedLoraAdapters.firstIndex(where: { $0.adapterPointer == loraAdapter.adapterPointer }) else {
             throw LlamaContextError.loraAdapterFailed("LoRA adapter not found in context.")
         }
+
+        var nextAdapters = appliedLoraAdapters
+        nextAdapters.remove(at: index)
+
+        let result = setLoraAdapters(nextAdapters)
+        if result != 0 {
+            throw LlamaContextError.loraAdapterFailed("Failed to remove LoRA adapter.")
+        }
+        appliedLoraAdapters = nextAdapters
     }
 
     /// Removes all LoRA adapters from the context.
     public func removeAllLoraAdapters() {
-        llama_clear_adapter_lora(contextPointer)
+        if setLoraAdapters([]) == 0 {
+            appliedLoraAdapters.removeAll(keepingCapacity: true)
+        }
     }
 
     /// Applies a control vector to the context.
@@ -210,7 +254,7 @@ public final class LlamaContext {
     /// - Throws: `LlamaContextError.loraAdapterFailed` if applying the control vector fails.
     public func apply(controlVector data: [Float], n_embd: Int32, startLayer: Int32, endLayer: Int32) throws {
         let result = data.withUnsafeBufferPointer { bufferPointer in
-            llama_apply_adapter_cvec(
+            llama_set_adapter_cvec(
                 contextPointer,
                 bufferPointer.baseAddress,
                 size_t(bufferPointer.count),
@@ -227,7 +271,7 @@ public final class LlamaContext {
     /// Clears the currently applied control vector.
     /// - Throws: `LlamaContextError.loraAdapterFailed` if clearing fails.
     public func clearControlVector() throws {
-        let result = llama_apply_adapter_cvec(contextPointer, nil, 0, 0, 0, 0)
+        let result = llama_set_adapter_cvec(contextPointer, nil, 0, 0, 0, 0)
         if result != 0 {
             throw LlamaContextError.loraAdapterFailed("Failed to clear control vector.")
         }
