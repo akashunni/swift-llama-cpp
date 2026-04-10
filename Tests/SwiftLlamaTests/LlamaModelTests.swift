@@ -2,10 +2,11 @@ import Testing
 import Foundation
 @testable import SwiftLlama
 
+@Suite(.serialized)
 struct LlamaModelTests {
     @Test("Tokenize of empty string is empty and chat template returns something")
     func testTokenizeEmptyAndChatTemplate() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let empty = model.tokenize(text: "", addBos: model.shouldAddBos(), special: true)
         #expect(empty.isEmpty)
 
@@ -19,14 +20,14 @@ struct LlamaModelTests {
 
     @Test("Built-in chat templates accessible")
     func testBuiltinTemplates() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let templates = model.builtinChatTemplates()
         #expect(templates.count >= 0) // may be empty depending on model
     }
 
     @Test("Detokenize round-trip: simple ASCII")
     func testDetokenizeRoundTripSimple() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let input = "Hello, world!"
         let t1 = model.tokenize(text: input, addBos: false, special: false)
         #expect(!t1.isEmpty)
@@ -37,7 +38,7 @@ struct LlamaModelTests {
 
     @Test("Detokenize round-trip: whitespace and newlines")
     func testDetokenizeRoundTripWhitespace() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let input = "  Leading and trailing  spaces\nwith\tmixed\twhitespace  "
         let t1 = model.tokenize(text: input, addBos: false, special: false)
         #expect(!t1.isEmpty)
@@ -48,7 +49,7 @@ struct LlamaModelTests {
 
     @Test("Detokenize round-trip: emojis and symbols")
     func testDetokenizeRoundTripUnicodeEmoji() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let input = "Emojis 🎯🚀🔥 — currency €£¥, math ±≈∑, quotes “smart”"
         let t1 = model.tokenize(text: input, addBos: false, special: false)
         #expect(!t1.isEmpty)
@@ -59,7 +60,7 @@ struct LlamaModelTests {
 
     @Test("Detokenize round-trip: multilingual")
     func testDetokenizeRoundTripMultilingual() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let input = "français español 中文 العربية हिन्दी русский"
         let t1 = model.tokenize(text: input, addBos: false, special: false)
         #expect(!t1.isEmpty)
@@ -70,7 +71,7 @@ struct LlamaModelTests {
 
     @Test("Detokenize round-trip: longer text with punctuation and numbers")
     func testDetokenizeRoundTripLonger() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let input = "In 2025, test-cases should cover edge-cases: e.g., URLs, emails, and 100% of basics."
         let t1 = model.tokenize(text: input, addBos: false, special: false)
         #expect(!t1.isEmpty)
@@ -81,7 +82,7 @@ struct LlamaModelTests {
 
     @Test("Round-trip with model.shouldAddBos() setting")
     func testDetokenizeRoundTripWithModelBosSetting() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let input = "Round-trip with optional BOS/EOS handling."
         let addBos = model.shouldAddBos()
         let t1 = model.tokenize(text: input, addBos: addBos, special: false)
@@ -94,7 +95,7 @@ struct LlamaModelTests {
 
     @Test("Special tokens: unparse + parse round-trip for BOS")
     func testSpecialTokenUnparseParseRoundTripBOS() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let input = "Special token handling check."
         let core = model.tokenize(text: input, addBos: false, special: false)
         #expect(!core.isEmpty)
@@ -108,5 +109,3 @@ struct LlamaModelTests {
         #expect(reparsed == withBos)
     }
 }
-
-

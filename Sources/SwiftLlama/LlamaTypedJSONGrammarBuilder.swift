@@ -452,13 +452,15 @@ final class GrammarGenerator {
             for (k, v) in required {
                 let child = emitRule(for: v, preferredName: "\(name)r", rules: &rules, names: &names)
                 let pairName = "p\(name.dropFirst())\(sanitize(k))"
-                rules.append("\(pairName) ::= \"\(escapeJSONStringLiteral(k))\" ws \":\" ws \(child)")
+                let quotedKeyLiteral = "\\\"\(escapeJSONStringLiteral(k))\\\""
+                rules.append("\(pairName) ::= \"\(quotedKeyLiteral)\" ws \":\" ws \(child)")
                 pairRules.append(pairName)
             }
             for (k, v) in optional {
                 let child = emitRule(for: v, preferredName: "\(name)o", rules: &rules, names: &names)
                 let pairName = "p\(name.dropFirst())\(sanitize(k))o"
-                rules.append("\(pairName) ::= \"\(escapeJSONStringLiteral(k))\" ws \":\" ws (\(child)|\"null\")")
+                let quotedKeyLiteral = "\\\"\(escapeJSONStringLiteral(k))\\\""
+                rules.append("\(pairName) ::= \"\(quotedKeyLiteral)\" ws \":\" ws (\(child)|\"null\")")
                 pairRules.append(pairName)
             }
             if pairRules.isEmpty {
@@ -502,5 +504,4 @@ number ::= "-"? [0-9]+ ("." [0-9]+)? ([eE] [+-]? [0-9]+)?
         return String(allowed).replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
     }
 }
-
 

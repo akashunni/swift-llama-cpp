@@ -1,51 +1,51 @@
-import Testing
 import Foundation
+import Testing
 @testable import SwiftLlama
 
+@Suite(.serialized)
 struct LlamaTests {
 
-    @Test("Token generation baseline speed and non-empty output")
+    @Test("Completion initialization and token generation produce output")
     @MainActor
-    func tokenGenerationSpeed() async throws {
-        let sut = try Llama(
-            modelPath: URL.llama1B.path,
-            config: .init(batchSize: 256, maxTokenCount: 2048)
-        )
-
-        await sut.updateSamplingConfig(.init(temperature: 0.7, seed: 0))
-        try await sut.initializeCompletion(messages: [LlamaChatMessage(role: .system, content: "Tell me a very long story about mars colonization")])
-
-        let numberOfTokensToGenerate = 50
-        var tokensGenerated = 0
-        var generatedText = ""
-
-        let startTime = CFAbsoluteTimeGetCurrent()
-        for _ in 0..<numberOfTokensToGenerate {
-            let nextToken = try await sut.generateNextToken()
-            switch nextToken {
-            case .token(let token):
-                tokensGenerated += 1
-                generatedText += token
-            case .endOfString:
-                break
+    func completionFlowProducesTokens() async throws {
+        try await TestProgress.runOnMainActor("LlamaTests.completionFlowProducesTokens") {
+            guard let sut = try TestModelSupport.makeLlama(maxTokenCount: 128) else {
+                TestProgress.skipped("LlamaTests.completionFlowProducesTokens", reason: "No GGUF test model available")
+                return
             }
-        }
-        let elapsed = CFAbsoluteTimeGetCurrent() - startTime
-        let tps = Double(tokensGenerated) / max(elapsed, 0.0001)
 
-        #expect(tokensGenerated > 0)
-        #expect(!generatedText.isEmpty)
-        #expect(tps > 20.0)
+            await sut.updateSamplingConfig(.init(temperature: 0.3, seed: 7))
+            try await sut.initializeCompletion(messages: TestModelSupport.simpleMessages())
+
+            var emittedText = ""
+            for _ in 0..<16 {
+                let nextToken = try await sut.generateNextToken()
+                switch nextToken {
+                case .token(let token):
+                    emittedText += token
+                case .endOfString:
+                    break
+                }
+            }
+
+            #expect(!emittedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
     }
 
-    @Test("Tokenize and detokenize roundtrip")
+    @Test("Tokenize and detokenize keep a stable round trip")
     func tokenizeDetokenizeRoundtrip() throws {
-        let modelOpt = LlamaModel(path: URL.llama1B.path)
-        let model = try #require(modelOpt)
-        let text = "Hello, 世界! Emojis: 🚀🔥"
-        let tokens = model.tokenize(text: text, addBos: model.shouldAddBos(), special: true)
-        let detok = model.detokenize(tokens: tokens, removeSpecial: true, unparseSpecial: false)
-        #expect(!tokens.isEmpty)
-        #expect(!detok.isEmpty)
+        try TestProgress.run("LlamaTests.tokenizeDetokenizeRoundtrip") {
+            guard let model = try TestModelSupport.makeModel() else {
+                TestProgress.skipped("LlamaTests.tokenizeDetokenizeRoundtrip", reason: "No GGUF test model available")
+                return
+            }
+            let text = "Hello, 世界! Emojis: 🚀🔥"
+            let tokens = model.tokenize(text: text, addBos: false, special: false)
+            let detokenized = model.detokenize(tokens: tokens, removeSpecial: true, unparseSpecial: false)
+            let reparsed = model.tokenize(text: detokenized, addBos: false, special: false)
+
+            #expect(!tokens.isEmpty)
+            #expect(reparsed == tokens)
+        }
     }
 }

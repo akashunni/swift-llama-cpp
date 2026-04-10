@@ -2,16 +2,16 @@ import Testing
 import Foundation
 @testable import SwiftLlama
 
+@Suite(.serialized)
 struct LlamaContextTests {
 
-    private func makeContext(maxTokens: UInt32 = 2048, batch: UInt32 = 256) async throws -> Llama {
-        let llama = try Llama(modelPath: URL.llama1B.path, config: .init(batchSize: batch, maxTokenCount: maxTokens))
-        return llama
+    private func makeContext(maxTokens: UInt32 = 2048, batch: UInt32 = 256) async throws -> Llama? {
+        try TestModelSupport.makeLlama(batchSize: batch, maxTokenCount: maxTokens)
     }
 
     @Test("Decode produces logits and embeddings")
     func testDecodeProducesSignals() async throws {
-        let sut = try await makeContext()
+        guard let sut = try await makeContext() else { return }
         await sut.updateSamplingConfig(.init(temperature: 0.7, seed: 1))
         try await sut.initializeCompletion(messages: [LlamaChatMessage(role: .user, content: "Hello")])
 
@@ -28,7 +28,7 @@ struct LlamaContextTests {
 
     @Test("State save/load roundtrip non-empty")
     func testStateRoundtrip() async throws {
-        let sut = try await makeContext()
+        guard let sut = try await makeContext() else { return }
         await sut.updateSamplingConfig(.init(temperature: 0.7, seed: 1))
         try await sut.initializeCompletion(messages: [LlamaChatMessage(role: .user, content: "Hello state")])
         _ = try await sut.generateNextToken()
@@ -41,7 +41,7 @@ struct LlamaContextTests {
 
     @Test("Thread settings can be updated")
     func testThreadSettings() async throws {
-        let sut = try await makeContext()
+        guard let sut = try await makeContext() else { return }
         await sut.setThreads(nThreads: 1, nThreadsBatch: 1)
         let (n, nb) = await sut.getThreads()
         #expect(n == 1)
@@ -50,7 +50,7 @@ struct LlamaContextTests {
 
     @Test("Memory operations clear and remove ranges")
     func testMemoryOperations() async throws {
-        let sut = try await makeContext()
+        guard let sut = try await makeContext() else { return }
         await sut.updateSamplingConfig(.init(temperature: 0.7, seed: 1))
         try await sut.initializeCompletion(messages: [LlamaChatMessage(role: .user, content: "Hello memory ops")])
         _ = try await sut.generateNextToken()
@@ -62,5 +62,3 @@ struct LlamaContextTests {
         #expect(afterMin == -1)
     }
 }
-
-

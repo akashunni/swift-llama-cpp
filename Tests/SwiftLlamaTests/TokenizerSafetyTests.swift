@@ -2,10 +2,11 @@ import Testing
 import Foundation
 @testable import SwiftLlama
 
+@Suite(.serialized)
 struct TokenizerSafetyTests {
     @Test("Tokenize very long input")
     func testLongInputTokenization() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         // Create a long string with many characters that might trigger byte fallback
         // to ensure we have a high token-to-char ratio if possible,
         // or just a very long string to test the context truncation.
@@ -21,14 +22,14 @@ struct TokenizerSafetyTests {
 
     @Test("Tokenize empty input")
     func testEmptyInput() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let tokens = model.tokenize(text: "", addBos: true, special: true)
         #expect(tokens.isEmpty)
     }
 
     @Test("Normal input tokenization")
     func testNormalInput() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         let text = "Hello, world!"
         let tokens = model.tokenize(text: text, addBos: true, special: true)
         #expect(!tokens.isEmpty)
@@ -39,7 +40,7 @@ struct TokenizerSafetyTests {
 
     @Test("piece(from:) with various tokens")
     func testPieceSafety() throws {
-        let model = try #require(LlamaModel(path: URL.llama1B.path))
+        guard let model = try TestModelSupport.makeModel() else { return }
         print("Vocabulary size: \(model.vocabularySize())")
         
         // Test common token
