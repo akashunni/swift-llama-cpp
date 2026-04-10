@@ -5,8 +5,10 @@ import Foundation
 @Suite(.serialized)
 struct LlamaContextTests {
 
-    private func makeContext(maxTokens: UInt32 = 2048, batch: UInt32 = 256) async throws -> Llama? {
-        try TestModelSupport.makeLlama(batchSize: batch, maxTokenCount: maxTokens)
+    private func makeContext(maxTokens: UInt32 = 512, batch: UInt32 = 64) async throws -> Llama? {
+        // These tests exercise context APIs rather than GPU offload, so keep the
+        // footprint small enough to run against larger Gemma models on laptops.
+        try TestModelSupport.makeLlama(batchSize: batch, maxTokenCount: maxTokens, useGPU: false)
     }
 
     @Test("Decode produces logits and embeddings")

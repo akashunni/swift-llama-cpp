@@ -60,3 +60,72 @@ do {
     print("Error generating text: \(error.localizedDescription)")
 }
 ``` 
+
+## Running Tests
+
+The test suite supports the bundled small test model as well as external GGUF models.
+
+Run the full suite with the bundled test model:
+
+```bash
+swift test
+```
+
+Run the suite with a specific GGUF:
+
+```bash
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/model.gguf" swift test
+```
+
+The test helper checks model paths in this order:
+
+1. `SWIFT_LLAMA_TEST_MODEL_PATH`
+2. `LLAMA_MODEL_PATH`
+3. the bundled test model in `Tests/SwiftLlamaTests/Resources`
+
+If a large model is unstable on GPU, force CPU for the run:
+
+```bash
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/model.gguf" SWIFT_LLAMA_TEST_USE_GPU=0 swift test
+```
+
+### Common runs
+
+Run only service and structured-output tests against a Llama-family model:
+
+```bash
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/llama.gguf" swift test --filter 'LlamaServiceTests|LlamaTypedGrammarTests'
+```
+
+Run Gemma-family structured-output tests:
+
+```bash
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/gemma.gguf" swift test --filter 'LlamaServiceTests|LlamaTypedGrammarTests'
+```
+
+Run low-level context tests separately:
+
+```bash
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/model.gguf" swift test --filter LlamaContextTests
+```
+
+Run a single suite while debugging a failure:
+
+```bash
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/model.gguf" swift test --filter LlamaServiceTests
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/model.gguf" swift test --filter LlamaTypedGrammarTests
+SWIFT_LLAMA_TEST_MODEL_PATH="/absolute/path/to/model.gguf" swift test --filter LlamaTests
+```
+
+Long-running model-backed tests print progress in the terminal:
+
+- `[TEST START] ...`
+- `[TEST PASS] ...`
+- `[TEST SKIP] ...`
+- `[TEST FAIL] ...`
+
+### Notes
+
+- Model-backed tests are designed to be functional and portable, not tuned to one exact model family.
+- Some tests are serialized to avoid loading multiple large models at once.
+- Context-level tests use a smaller CPU-only setup so larger GGUFs can run on laptops more reliably.

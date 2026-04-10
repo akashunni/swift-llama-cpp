@@ -12,6 +12,12 @@ enum LlamaModelError: Error {
     case initializationError
 }
 
+public enum LlamaModelFamily: String, Sendable {
+    case llama
+    case gemma
+    case unknown
+}
+
 public final class LlamaModel {
 
     // MARK: - Properties
@@ -194,7 +200,11 @@ public final class LlamaModel {
 
     /// Apply chat template using the default model template (or custom by name).
     public func applyChatTemplate(to messages: [LlamaChatMessage], addAssistant: Bool? = nil) -> String {
+        guard !messages.isEmpty else { return "" }
         let cTemplatePointer = llama_model_chat_template(modelPointer, nil)
+        guard cTemplatePointer != nil else {
+            return fallbackPromptForModelFamily(from: messages, addAssistant: addAssistant)
+        }
 
         // Convert Swift messages to C messages
         var cMessages = messages.map { message -> llama_chat_message in
@@ -205,7 +215,7 @@ public final class LlamaModel {
 
         // Initial buffer size
         let bufferSizeMultiplier = 3
-        var bufferSize = bufferSizeMultiplier * messages.reduce(0) { $0 + $1.content.count }
+        var bufferSize = max(256, bufferSizeMultiplier * messages.reduce(0) { $0 + $1.content.count })
         var buffer = [CChar](repeating: 0, count: bufferSize)
 
         var resultSize: Int32 = 0
@@ -232,14 +242,25 @@ public final class LlamaModel {
            free(UnsafeMutablePointer(mutating: message.content))
         }
 
-        // Convert the C string buffer to a Swift string
-        return Self.stringFromNullTerminated(buffer)
+        // Negative or zero means template application failed or produced nothing.
+        guard resultSize > 0 else {
+            return fallbackPromptForModelFamily(from: messages, addAssistant: addAssistant)
+        }
+
+        let rendered = Self.stringFromNullTerminated(buffer)
+        return rendered.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? fallbackPromptForModelFamily(from: messages, addAssistant: addAssistant)
+            : rendered
     }
 
     /// Apply chat template by template name found in the model.
     public func applyChatTemplate(name: String, to messages: [LlamaChatMessage], addAssistant: Bool? = nil) -> String {
+        guard !messages.isEmpty else { return "" }
         let cTemplatePointer = name.withCString { cname in
             llama_model_chat_template(modelPointer, cname)
+        }
+        guard cTemplatePointer != nil else {
+            return fallbackPromptForModelFamily(from: messages, addAssistant: addAssistant)
         }
         // Convert Swift messages to C messages
         var cMessages = messages.map { message -> llama_chat_message in
@@ -248,7 +269,7 @@ public final class LlamaModel {
            return llama_chat_message(role: roleCString, content: contentCString)
         }
         let bufferSizeMultiplier = 3
-        var bufferSize = bufferSizeMultiplier * messages.reduce(0) { $0 + $1.content.count }
+        var bufferSize = max(256, bufferSizeMultiplier * messages.reduce(0) { $0 + $1.content.count })
         var buffer = [CChar](repeating: 0, count: bufferSize)
         var resultSize: Int32 = 0
         repeat {
@@ -269,7 +290,111 @@ public final class LlamaModel {
             free(UnsafeMutablePointer(mutating: message.role))
             free(UnsafeMutablePointer(mutating: message.content))
         }
-        return Self.stringFromNullTerminated(buffer)
+        guard resultSize > 0 else {
+            return fallbackPromptForModelFamily(from: messages, addAssistant: addAssistant)
+        }
+        let rendered = Self.stringFromNullTerminated(buffer)
+        return rendered.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? fallbackPromptForModelFamily(from: messages, addAssistant: addAssistant)
+            : rendered
+    }
+
+    public func architecture() -> String? {
+        metaValue(forKey: "general.architecture")?.lowercased()
+    }
+
+    public func modelFamily() -> LlamaModelFamily {
+        guard let architecture = architecture() else {
+            return fallbackModelFamily()
+        }
+
+        switch architecture {
+        case "llama":
+            return .llama
+        case let value where value.hasPrefix("gemma"):
+            return .gemma
+        default:
+            return fallbackModelFamily()
+        }
+    }
+
+    private func fallbackPrompt(from messages: [LlamaChatMessage], addAssistant: Bool?) -> String {
+        var parts = messages.map { "\($0.role.rawValue.capitalized): \($0.content)" }
+        if addAssistant ?? (messages.last?.role != .assistant) {
+            parts.append("Assistant:")
+        }
+        return parts.joined(separator: "\n\n")
+    }
+
+    private func gemmaPrompt(from messages: [LlamaChatMessage], addAssistant: Bool?) -> String {
+        let normalizedMessages = normalizeMessagesForGemma(messages)
+        var prompt = normalizedMessages.map { message in
+            let role = message.role == .assistant ? "model" : "user"
+            return "<start_of_turn>\(role)\n\(message.content)<end_of_turn>"
+        }.joined(separator: "\n")
+
+        if addAssistant ?? (normalizedMessages.last?.role != .assistant) {
+            if !prompt.isEmpty {
+                prompt += "\n"
+            }
+            prompt += "<start_of_turn>model\n"
+        }
+
+        return prompt
+    }
+
+    private func normalizeMessagesForGemma(_ messages: [LlamaChatMessage]) -> [LlamaChatMessage] {
+        var normalized: [LlamaChatMessage] = []
+        var pendingInstruction: [String] = []
+
+        for message in messages {
+            switch message.role {
+            case .system:
+                pendingInstruction.append(message.content.trimmingCharacters(in: .whitespacesAndNewlines))
+            case .user:
+                let content = ([pendingInstruction.joined(separator: "\n\n"), message.content]
+                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+                    .joined(separator: "\n\n")
+                normalized.append(.init(role: .user, content: content))
+                pendingInstruction.removeAll(keepingCapacity: true)
+            case .assistant:
+                if !pendingInstruction.isEmpty {
+                    let merged = pendingInstruction.joined(separator: "\n\n")
+                    normalized.append(.init(role: .user, content: merged))
+                    pendingInstruction.removeAll(keepingCapacity: true)
+                }
+                normalized.append(message)
+            }
+        }
+
+        if !pendingInstruction.isEmpty {
+            normalized.append(.init(role: .user, content: pendingInstruction.joined(separator: "\n\n")))
+        }
+
+        return normalized
+    }
+
+    private func fallbackPromptForModelFamily(from messages: [LlamaChatMessage], addAssistant: Bool?) -> String {
+        switch modelFamily() {
+        case .gemma:
+            return gemmaPrompt(from: messages, addAssistant: addAssistant)
+        case .llama, .unknown:
+            return fallbackPrompt(from: messages, addAssistant: addAssistant)
+        }
+    }
+
+    private func fallbackModelFamily() -> LlamaModelFamily {
+        if let tokenizerModel = metaValue(forKey: "tokenizer.ggml.model")?.lowercased(),
+           tokenizerModel.contains("gemma") {
+            return .gemma
+        }
+
+        if let modelName = metaValue(forKey: "general.name")?.lowercased(),
+           modelName.contains("gemma") {
+            return .gemma
+        }
+
+        return .unknown
     }
 
     /// Total number of parameters in the model.

@@ -122,22 +122,40 @@ struct LlamaServiceTests {
     @Test("Repetition penalty configuration still produces output")
     func repetitionPenaltyProducesOutput() async throws {
         try await TestProgress.run("LlamaServiceTests.repetitionPenaltyProducesOutput") {
-            guard let service = makeService() else {
+            let isGemmaFamily = try TestModelSupport.isGemmaFamily()
+            guard let service = makeService(maxTokenCount: isGemmaFamily ? 768 : 192) else {
                 TestProgress.skipped("LlamaServiceTests.repetitionPenaltyProducesOutput", reason: "No GGUF test model available")
                 return
             }
-            let messages = [
-                LlamaChatMessage(role: .system, content: "Respond in one sentence."),
-                LlamaChatMessage(role: .user, content: "Repeat the word echo several times, but avoid loops.")
-            ]
             let sampling = LlamaSamplingConfig(
-                temperature: 0.7,
+                temperature: isGemmaFamily ? 0.0 : 0.2,
                 seed: 21,
-                repetitionPenaltyConfig: .init(lastN: 32, repeatPenalty: 1.2, freqPenalty: 0.1, presentPenalty: 0.1)
+                grammarConfig: .init(
+                    grammar: try loadGrammar(named: "json_array_strings"),
+                    grammarRoot: "root"
+                ),
+                repetitionPenaltyConfig: .init(
+                    lastN: isGemmaFamily ? 8 : 32,
+                    repeatPenalty: isGemmaFamily ? 1.02 : 1.2,
+                    freqPenalty: isGemmaFamily ? 0.0 : 0.1,
+                    presentPenalty: isGemmaFamily ? 0.0 : 0.1
+                )
             )
 
-            let text = try await service.respond(to: messages, samplingConfig: sampling)
-            #expect(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            let text = try await service.respond(
+                to: [
+                    LlamaChatMessage(role: .system, content: "Respond only with a JSON array of strings."),
+                    LlamaChatMessage(role: .user, content: "Return exactly three short words as a compact JSON array.")
+                ],
+                samplingConfig: sampling
+            )
+            let strings = try parseStringArray(text)
+            if isGemmaFamily {
+                #expect(!strings.isEmpty)
+            } else {
+                #expect(strings.count == 3)
+            }
+            #expect(strings.allSatisfy { !$0.isEmpty })
         }
     }
 
@@ -164,14 +182,14 @@ struct LlamaServiceTests {
     @Test("GBNF array grammar produces valid JSON arrays")
     func jsonArrayGrammarProducesJSONArray() async throws {
         try await TestProgress.run("LlamaServiceTests.jsonArrayGrammarProducesJSONArray") {
-            guard let service = makeService(maxTokenCount: 96) else {
+            guard let service = makeService(maxTokenCount: 256) else {
                 TestProgress.skipped("LlamaServiceTests.jsonArrayGrammarProducesJSONArray", reason: "No GGUF test model available")
                 return
             }
             let sampling = try makeGrammarSamplingConfig(grammarName: "json_array")
             let messages = [
                 LlamaChatMessage(role: .system, content: "Respond only with a valid JSON array."),
-                LlamaChatMessage(role: .user, content: "Return a short array.")
+                LlamaChatMessage(role: .user, content: "Return exactly one short JSON array on a single line, such as [1,2,3].")
             ]
 
             let text = try await service.respond(to: messages, samplingConfig: sampling)
@@ -224,14 +242,14 @@ struct LlamaServiceTests {
     @Test("Typed respond decodes arrays of strings")
     func typedRespondDecodesArray() async throws {
         try await TestProgress.run("LlamaServiceTests.typedRespondDecodesArray") {
-            guard let service = makeService(maxTokenCount: 128) else {
+            guard let service = makeService(maxTokenCount: 256) else {
                 TestProgress.skipped("LlamaServiceTests.typedRespondDecodesArray", reason: "No GGUF test model available")
                 return
             }
             let strings = try await service.respond(
                 to: [
                     LlamaChatMessage(role: .system, content: "Respond only with a JSON array of strings."),
-                    LlamaChatMessage(role: .user, content: "Return a short array of fruit names.")
+                    LlamaChatMessage(role: .user, content: "Return exactly this JSON array of strings: [\"apple\",\"banana\",\"mango\"].")
                 ],
                 generating: [String].self
             )

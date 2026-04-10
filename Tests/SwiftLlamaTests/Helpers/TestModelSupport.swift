@@ -45,6 +45,18 @@ enum TestModelSupport {
         return LlamaModel(path: url.path(percentEncoded: false))
     }
 
+    static func modelFamily() throws -> LlamaModelFamily? {
+        try makeModel()?.modelFamily()
+    }
+
+    static func isLlamaFamily() throws -> Bool {
+        try modelFamily() == .llama
+    }
+
+    static func isGemmaFamily() throws -> Bool {
+        try modelFamily() == .gemma
+    }
+
     static func makeService(
         batchSize: UInt32 = 128,
         maxTokenCount: UInt32 = 256,

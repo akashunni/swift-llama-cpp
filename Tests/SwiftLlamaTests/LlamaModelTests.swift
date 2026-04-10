@@ -18,6 +18,43 @@ struct LlamaModelTests {
         #expect(!prompt.isEmpty)
     }
 
+    @Test("Model family is derived from general.architecture")
+    func testModelFamilyUsesArchitecture() throws {
+        guard let model = try TestModelSupport.makeModel() else { return }
+        let architecture = model.architecture()
+        let family = model.modelFamily()
+
+        switch architecture {
+        case "llama":
+            #expect(family == .llama)
+        case let value? where value.hasPrefix("gemma"):
+            #expect(family == .gemma)
+        default:
+            #expect(family == .unknown || family == .gemma)
+        }
+    }
+
+    @Test("Prompt fallback shape matches model family")
+    func testPromptFallbackShapeMatchesModelFamily() throws {
+        guard let model = try TestModelSupport.makeModel() else { return }
+
+        let messages = [
+            LlamaChatMessage(role: .system, content: "You are a helpful assistant."),
+            LlamaChatMessage(role: .user, content: "Say hi")
+        ]
+        let prompt = model.applyChatTemplate(name: "__missing_template__", to: messages)
+
+        switch model.modelFamily() {
+        case .gemma:
+            #expect(prompt.contains("<start_of_turn>user"))
+            #expect(prompt.contains("<start_of_turn>model"))
+        case .llama, .unknown:
+            #expect(prompt.contains("System: You are a helpful assistant."))
+            #expect(prompt.contains("User: Say hi"))
+            #expect(prompt.contains("Assistant:"))
+        }
+    }
+
     @Test("Built-in chat templates accessible")
     func testBuiltinTemplates() throws {
         guard let model = try TestModelSupport.makeModel() else { return }

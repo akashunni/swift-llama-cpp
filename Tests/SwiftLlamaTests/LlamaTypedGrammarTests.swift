@@ -124,20 +124,27 @@ struct LlamaTypedGrammarTests {
 
     @Test("Streaming typed JSON for Person produces valid JSON")
     func testTypedStreamingPerson() async throws {
-        guard let service = TestModelSupport.makeService(batchSize: 128, maxTokenCount: 192) else { return }
-        let messages = [
-            LlamaChatMessage(role: .system, content: "You are a helpful assistant that responds only with JSON that matches the requested schema."),
-            LlamaChatMessage(role: .user, content: "Return a person with name, age, and optionally a city")
-        ]
-        let stream = try await service.streamCompletion(of: messages, generating: Person.self)
-        var text = ""
-        for try await token in stream {
-            text += token
+        try await TestProgress.run("LlamaTypedGrammarTests.testTypedStreamingPerson") {
+            guard let service = TestModelSupport.makeService(batchSize: 128, maxTokenCount: 320) else {
+                TestProgress.skipped("LlamaTypedGrammarTests.testTypedStreamingPerson", reason: "No GGUF test model available")
+                return
+            }
+            let messages = [
+                LlamaChatMessage(role: .system, content: "You are a helpful assistant that responds only with JSON that matches the requested schema."),
+                LlamaChatMessage(role: .user, content: "Return exactly one person with name \"Ada\", age 36, and city \"London\".")
+            ]
+            let stream = try await service.streamCompletion(of: messages, generating: Person.self)
+            var text = ""
+            for try await token in stream {
+                text += token
+            }
+            let data = text.data(using: .utf8)
+            #expect(data != nil)
+            let jsonData = try #require(data)
+            let person = try JSONDecoder().decode(Person.self, from: jsonData)
+            #expect(person.name == "Ada")
+            #expect(person.age == 36)
+            #expect(person.city == "London")
         }
-        let data = text.data(using: .utf8)
-        #expect(data != nil)
-        let jsonData = try #require(data)
-        let person = try JSONDecoder().decode(Person.self, from: jsonData)
-        #expect(!person.name.isEmpty)
     }
 }

@@ -187,6 +187,9 @@ final actor Llama {
         if currentTokenPosition >= Int32(maxTokenCount) {
             return .endOfString
         }
+        guard context.lastLogits() != nil else {
+            throw LlamaError.decodingError
+        }
         let newTokenId = sampler.sample(context: context)
 
         if model.isEogToken(newTokenId) || currentTokenPosition >= Int32(maxTokenCount) {
