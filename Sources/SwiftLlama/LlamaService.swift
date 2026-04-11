@@ -127,6 +127,8 @@ public final actor LlamaService {
                         switch result {
                         case .token(let token):
                             continuation.yield(token)
+                        case .skip:
+                            continue
                         case .endOfString:
                             break generationLoop
                         }

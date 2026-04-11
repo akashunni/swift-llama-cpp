@@ -129,7 +129,7 @@ public final class LlamaModel {
 
     /// End-of-sentence token id.
     public func eosToken() -> llama_token {
-        llama_vocab_eos(modelPointer)
+        llama_vocab_eos(vocabPointer)
     }
 
     /// Whether the token is an end-of-generation token (e.g. EOS/EOT).

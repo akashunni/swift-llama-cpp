@@ -3,6 +3,7 @@ import llama
 
 enum NextToken {
     case token(String)
+    case skip
     case endOfString
 }
 
@@ -19,6 +20,7 @@ final actor Llama {
     /// Tracks the current position in the token sequence during decoding.
     var currentTokenPosition: Int32 = 0
     var processedTokens: [llama_token] = []
+    private var emittedVisibleTokenCount: Int = 0
 
     init(modelPath: String, config: LlamaConfig) throws {
         self.config = config
@@ -120,6 +122,8 @@ final actor Llama {
             throw LlamaError.contextSizeLimitExeeded
         }
 
+        emittedVisibleTokenCount = 0
+
         if tokenList.starts(with: processedTokens) {
             print("### Using cached processing")
             try processPrompt(tokens: Array(tokenList[processedTokens.count...]), startIndex: processedTokens.count)
@@ -190,11 +194,14 @@ final actor Llama {
         guard context.lastLogits() != nil else {
             throw LlamaError.decodingError
         }
-        let newTokenId = sampler.sample(context: context)
 
-        if model.isEogToken(newTokenId) || currentTokenPosition >= Int32(maxTokenCount) {
-            return .endOfString
-        }
+        let newTokenId = sampler.sample(context: context)
+        let renderedPiece = model.piece(from: newTokenId, renderSpecial: true)
+        let visiblePiece = model.piece(from: newTokenId, renderSpecial: false)
+        let isControlToken = model.isControl(token: newTokenId)
+        let isFilteredControlPiece = Self.isControlOutputPiece(renderedPiece) || Self.isControlOutputPiece(visiblePiece)
+        let isEog = model.isEogToken(newTokenId)
+        let shouldEndOnEog = isEog && emittedVisibleTokenCount > 0
 
         batch.reset()
         batch.addToken(newTokenId, at: currentTokenPosition, logits: true)
@@ -203,7 +210,16 @@ final actor Llama {
         currentTokenPosition += 1
         try context.decode(batch: batch)
 
-        return .token(model.piece(from: newTokenId))
+        if shouldEndOnEog || currentTokenPosition >= Int32(maxTokenCount) {
+            return .endOfString
+        }
+
+        if isControlToken || isFilteredControlPiece || visiblePiece.isEmpty {
+            return .skip
+        }
+
+        emittedVisibleTokenCount += 1
+        return .token(visiblePiece)
     }
 
     func updateSamplingConfig(_ config: LlamaSamplingConfig) {
@@ -262,5 +278,21 @@ final actor Llama {
         }
 
         currentTokenPosition = Int32(processedTokens.count)
+    }
+
+    static func isControlOutputPiece(_ piece: String) -> Bool {
+        let trimmed = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let controlPieces: Set<String> = [
+            "<start_of_turn>",
+            "<end_of_turn>",
+            "<think>",
+            "</think>",
+            "<|eot_id|>",
+            "<|end_of_text|>",
+            "<eos>",
+            "<eot>",
+        ]
+        return controlPieces.contains(trimmed)
     }
 }

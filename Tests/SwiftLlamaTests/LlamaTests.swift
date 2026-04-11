@@ -23,6 +23,8 @@ struct LlamaTests {
                 switch nextToken {
                 case .token(let token):
                     emittedText += token
+                case .skip:
+                    continue
                 case .endOfString:
                     break
                 }
@@ -48,4 +50,12 @@ struct LlamaTests {
             #expect(reparsed == tokens)
         }
     }
+    @Test("Control output pieces are filtered")
+    func controlOutputPiecesAreFiltered() {
+        #expect(Llama.isControlOutputPiece("<end_of_turn>"))
+        #expect(Llama.isControlOutputPiece(" <think> "))
+        #expect(Llama.isControlOutputPiece("<|eot_id|>"))
+        #expect(!Llama.isControlOutputPiece("Hello"))
+    }
+
 }
