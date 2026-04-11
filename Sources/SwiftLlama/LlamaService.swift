@@ -145,6 +145,18 @@ public final actor LlamaService {
         await currentTask?.cancelAndWait()
     }
 
+    /// Returns the GGUF `general.architecture` value for the loaded model if present.
+    public func modelArchitecture() async throws -> String? {
+        let llama = try initializeLlamaIfNecessary()
+        return await llama.modelArchitecture()
+    }
+
+    /// Returns a normalized model family derived from model metadata.
+    public func modelFamily() async throws -> LlamaModelFamily {
+        let llama = try initializeLlamaIfNecessary()
+        return await llama.modelFamily()
+    }
+
     private func initializeLlamaIfNecessary() throws -> Llama {
         guard let llama else {
             llama = try Llama(modelPath: modelUrl.path(percentEncoded: false), config: config)

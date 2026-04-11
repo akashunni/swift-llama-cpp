@@ -67,6 +67,28 @@ struct LlamaServiceTests {
         }
     }
 
+    @Test("Service exposes model architecture and family")
+    func serviceExposesModelArchitectureAndFamily() async throws {
+        try await TestProgress.run("LlamaServiceTests.serviceExposesModelArchitectureAndFamily") {
+            guard let service = makeService() else {
+                TestProgress.skipped("LlamaServiceTests.serviceExposesModelArchitectureAndFamily", reason: "No GGUF test model available")
+                return
+            }
+
+            let architecture = try await service.modelArchitecture()
+            let family = try await service.modelFamily()
+
+            switch architecture {
+            case "llama":
+                #expect(family == .llama)
+            case let value? where value.hasPrefix("gemma"):
+                #expect(family == .gemma)
+            default:
+                #expect(family == .unknown || family == .gemma)
+            }
+        }
+    }
+
     @Test("Plain text respond returns non-empty output")
     func respondReturnsText() async throws {
         try await TestProgress.run("LlamaServiceTests.respondReturnsText") {

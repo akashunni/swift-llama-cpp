@@ -92,6 +92,8 @@ final actor Llama {
     /// Expose the underlying context to trusted callers (tests / advanced users).
     /// Access is actor-isolated; callers must `await`.
     func contextHandle() -> LlamaContext { context }
+    func modelArchitecture() -> String? { model.architecture() }
+    func modelFamily() -> LlamaModelFamily { model.modelFamily() }
 
     // MARK: - Testing & Introspection helpers (actor-safe)
 
