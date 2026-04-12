@@ -27,10 +27,12 @@ struct LlamaModelTests {
         switch architecture {
         case "llama":
             #expect(family == .llama)
+        case "gemma4":
+            #expect(family == .gemma4)
         case let value? where value.hasPrefix("gemma"):
             #expect(family == .gemma)
         default:
-            #expect(family == .unknown || family == .gemma)
+            #expect(family == .unknown || family == .gemma || family == .gemma4)
         }
     }
 
@@ -48,6 +50,10 @@ struct LlamaModelTests {
         case .gemma:
             #expect(prompt.contains("<start_of_turn>user"))
             #expect(prompt.contains("<start_of_turn>model"))
+        case .gemma4:
+            #expect(prompt.contains("<|turn>system"))
+            #expect(prompt.contains("<|turn>user"))
+            #expect(prompt.contains("<|turn>model"))
         case .llama, .unknown:
             #expect(prompt.contains("System: You are a helpful assistant."))
             #expect(prompt.contains("User: Say hi"))

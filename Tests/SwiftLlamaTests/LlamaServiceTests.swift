@@ -81,10 +81,12 @@ struct LlamaServiceTests {
             switch architecture {
             case "llama":
                 #expect(family == .llama)
+            case "gemma4":
+                #expect(family == .gemma4)
             case let value? where value.hasPrefix("gemma"):
                 #expect(family == .gemma)
             default:
-                #expect(family == .unknown || family == .gemma)
+                #expect(family == .unknown || family == .gemma || family == .gemma4)
             }
         }
     }

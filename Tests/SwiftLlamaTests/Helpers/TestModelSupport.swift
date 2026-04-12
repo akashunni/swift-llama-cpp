@@ -54,7 +54,10 @@ enum TestModelSupport {
     }
 
     static func isGemmaFamily() throws -> Bool {
-        try modelFamily() == .gemma
+        if let family = try modelFamily() {
+            return family == .gemma || family == .gemma4
+        }
+        return false
     }
 
     static func makeService(
