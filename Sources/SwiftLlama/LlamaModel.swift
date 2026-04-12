@@ -15,6 +15,7 @@ enum LlamaModelError: Error {
 public enum LlamaModelFamily: String, Sendable {
     case llama
     case gemma
+    case gemma4
     case unknown
 }
 
@@ -311,6 +312,8 @@ public final class LlamaModel {
         switch architecture {
         case "llama":
             return .llama
+        case "gemma4":
+            return .gemma4
         case let value where value.hasPrefix("gemma"):
             return .gemma
         default:
@@ -330,7 +333,7 @@ public final class LlamaModel {
         let normalizedMessages = normalizeMessagesForGemma(messages)
         var prompt = normalizedMessages.map { message in
             let role = message.role == .assistant ? "model" : "user"
-            return "<start_of_turn>\(role)\n\(message.content)<end_of_turn>"
+            return "<start_of_turn>\(role)\n\(message.content)<end_of_turn><eos>"
         }.joined(separator: "\n")
 
         if addAssistant ?? (normalizedMessages.last?.role != .assistant) {
@@ -338,6 +341,31 @@ public final class LlamaModel {
                 prompt += "\n"
             }
             prompt += "<start_of_turn>model\n"
+        }
+
+        return prompt
+    }
+
+    private func gemma4Prompt(from messages: [LlamaChatMessage], addAssistant: Bool?) -> String {
+        let normalizedMessages = normalizeMessagesForGemma4(messages)
+        var prompt = normalizedMessages.map { message in
+            let role: String
+            switch message.role {
+            case .system:
+                role = "system"
+            case .user:
+                role = "user"
+            case .assistant:
+                role = "model"
+            }
+            return "<|turn>\(role)\n\(message.content)<turn|>"
+        }.joined(separator: "\n")
+
+        if addAssistant ?? (normalizedMessages.last?.role != .assistant) {
+            if !prompt.isEmpty {
+                prompt += "\n"
+            }
+            prompt += "<|turn>model\n"
         }
 
         return prompt
@@ -374,8 +402,14 @@ public final class LlamaModel {
         return normalized
     }
 
+    private func normalizeMessagesForGemma4(_ messages: [LlamaChatMessage]) -> [LlamaChatMessage] {
+        messages.filter { !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
     private func fallbackPromptForModelFamily(from messages: [LlamaChatMessage], addAssistant: Bool?) -> String {
         switch modelFamily() {
+        case .gemma4:
+            return gemma4Prompt(from: messages, addAssistant: addAssistant)
         case .gemma:
             return gemmaPrompt(from: messages, addAssistant: addAssistant)
         case .llama, .unknown:
@@ -385,8 +419,18 @@ public final class LlamaModel {
 
     private func fallbackModelFamily() -> LlamaModelFamily {
         if let tokenizerModel = metaValue(forKey: "tokenizer.ggml.model")?.lowercased(),
+           tokenizerModel.contains("gemma4") {
+            return .gemma4
+        }
+
+        if let tokenizerModel = metaValue(forKey: "tokenizer.ggml.model")?.lowercased(),
            tokenizerModel.contains("gemma") {
             return .gemma
+        }
+
+        if let modelName = metaValue(forKey: "general.name")?.lowercased(),
+           modelName.contains("gemma 4") || modelName.contains("gemma4") {
+            return .gemma4
         }
 
         if let modelName = metaValue(forKey: "general.name")?.lowercased(),
