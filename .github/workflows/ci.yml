@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, upgrade-llama-version]
+    branches: [main, upgrade-llama-version-auto]
   pull_request:
     branches: [main]
 
