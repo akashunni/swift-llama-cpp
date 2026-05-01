@@ -13,7 +13,7 @@ jobs:
     name: Update llama.cpp and build upgrade branch
     runs-on: macos-15
     env:
-      UPGRADE_BRANCH: upgrade-llama-version
+      UPGRADE_BRANCH: upgrade-llama-version-auto
 
     steps:
       - name: Checkout repository
