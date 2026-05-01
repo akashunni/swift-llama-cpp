@@ -1,0 +1,107 @@
+name: Weekly llama.cpp Upgrade
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-and-build:
+    name: Update llama.cpp and build upgrade branch
+    runs-on: macos-15
+    env:
+      UPGRADE_BRANCH: upgrade-llama-version
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.3.app
+
+      - name: Prepare automation branch
+        run: |
+          git fetch origin main "${UPGRADE_BRANCH}" || git fetch origin main
+          git checkout -B "${UPGRADE_BRANCH}" origin/main
+
+      - name: Resolve latest llama.cpp release
+        run: |
+          python3 - <<'PY'
+          import json
+          import urllib.request
+
+          url = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+          with urllib.request.urlopen(url) as response:
+              release = json.load(response)
+
+          tag = release["tag_name"]
+          asset_name = f"llama-{tag}-xcframework.zip"
+          asset = next(
+              (item for item in release.get("assets", []) if item.get("name") == asset_name),
+              None,
+          )
+
+          if asset is None:
+              raise SystemExit(f"Missing release asset: {asset_name}")
+
+          with open("release.env", "w", encoding="utf-8") as handle:
+              handle.write(f"LLAMA_VERSION={tag}\n")
+              handle.write(f"LLAMA_ASSET_URL={asset['browser_download_url']}\n")
+          PY
+
+          cat release.env >> "$GITHUB_ENV"
+
+      - name: Update Package.swift
+        run: |
+          curl -L "$LLAMA_ASSET_URL" -o /tmp/llama-xcframework.zip
+          export LLAMA_CHECKSUM
+          LLAMA_CHECKSUM="$(swift package compute-checksum /tmp/llama-xcframework.zip)"
+
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+
+          package = pathlib.Path("Package.swift")
+          text = package.read_text(encoding="utf-8")
+
+          text, version_count = re.subn(
+              r'let llamaVersion = "[^"]+"',
+              f'let llamaVersion = "{os.environ["LLAMA_VERSION"]}"',
+              text,
+              count=1,
+          )
+          text, checksum_count = re.subn(
+              r'let llamaChecksum = "[^"]+"',
+              f'let llamaChecksum = "{os.environ["LLAMA_CHECKSUM"]}"',
+              text,
+              count=1,
+          )
+
+          if version_count != 1 or checksum_count != 1:
+              raise SystemExit("Failed to rewrite Package.swift")
+
+          package.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Build package
+        run: swift build -v
+
+      - name: Commit and push automation branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet -- Package.swift; then
+            echo "Package.swift already points to the latest llama.cpp release."
+          else
+            git add Package.swift
+            git commit -m "chore: update llama.cpp to ${LLAMA_VERSION}"
+          fi
+
+          git push --force-with-lease origin HEAD:"${UPGRADE_BRANCH}"
