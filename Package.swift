@@ -3,8 +3,8 @@
 
 import PackageDescription
 
-let llamaVersion = "b9204"
-let llamaChecksum = "aaaf4d6854370372e7bceba612a39cf0dc702f67a0fc2306edae91257892656e"
+let llamaVersion = "b9553"
+let llamaChecksum = "8d7d15297300c2724d4630c855d5eb7d92a4eca6c3fd037cdb28b55854e49a67"
 
 let package = Package(
     name: "swift-llama-cpp",
